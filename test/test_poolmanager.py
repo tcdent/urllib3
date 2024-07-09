@@ -495,3 +495,137 @@ class TestPoolManager:
 
         # Connection should be closed, because reference to pool_1 is gone.
         assert conn_queue.qsize() == 0
+
+    @patch("urllib3.connection.ssl_wrap_socket")
+    @patch("urllib3.util.connection.create_connection")
+    def test_headers(
+        self, ssl_wrap_socket: mock.MagicMock, create_connection: mock.MagicMock
+    ) -> None:
+        with PoolManager(headers={"Foo": "bar"}) as http:
+            r = http.request("GET", "https://example.com")
+            assert r.headers.get("Foo") == "bar"
+
+            # r = http.request("POST", f"{self.base_url}/headers")
+            # returned_headers = r.json()
+            # assert returned_headers.get("Foo") == "bar"
+
+            # r = http.request_encode_url("GET", f"{self.base_url}/headers")
+            # returned_headers = r.json()
+            # assert returned_headers.get("Foo") == "bar"
+
+            # r = http.request_encode_body("POST", f"{self.base_url}/headers")
+            # returned_headers = r.json()
+            # assert returned_headers.get("Foo") == "bar"
+
+            # r = http.request_encode_url(
+            #     "GET", f"{self.base_url}/headers", headers={"Baz": "quux"}
+            # )
+            # returned_headers = r.json()
+            # assert returned_headers.get("Foo") is None
+            # assert returned_headers.get("Baz") == "quux"
+
+            # r = http.request_encode_body(
+            #     "GET", f"{self.base_url}/headers", headers={"Baz": "quux"}
+            # )
+            # returned_headers = r.json()
+            # assert returned_headers.get("Foo") is None
+            # assert returned_headers.get("Baz") == "quux"
+
+    # def test_headers_http_header_dict(self) -> None:
+    #     # Test uses a list of headers to assert the order
+    #     # that headers are sent in the request too.
+
+    #     headers = HTTPHeaderDict()
+    #     headers.add("Foo", "bar")
+    #     headers.add("Multi", "1")
+    #     headers.add("Baz", "quux")
+    #     headers.add("Multi", "2")
+
+    #     with PoolManager(headers=headers) as http:
+    #         r = http.request("GET", f"{self.base_url}/multi_headers")
+    #         returned_headers = r.json()["headers"]
+    #         assert returned_headers[-4:] == [
+    #             ["Foo", "bar"],
+    #             ["Multi", "1"],
+    #             ["Multi", "2"],
+    #             ["Baz", "quux"],
+    #         ]
+
+    #         r = http.request(
+    #             "GET",
+    #             f"{self.base_url}/multi_headers",
+    #             headers={
+    #                 **headers,
+    #                 "Extra": "extra",
+    #                 "Foo": "new",
+    #             },
+    #         )
+    #         returned_headers = r.json()["headers"]
+    #         assert returned_headers[-4:] == [
+    #             ["Foo", "new"],
+    #             ["Multi", "1, 2"],
+    #             ["Baz", "quux"],
+    #             ["Extra", "extra"],
+    #         ]
+
+    # def test_merge_headers_with_pool_manager_headers(self) -> None:
+    #     headers = HTTPHeaderDict()
+    #     headers.add("Cookie", "choc-chip")
+    #     headers.add("Cookie", "oatmeal-raisin")
+    #     orig = headers.copy()
+    #     added_headers = {"Cookie": "tim-tam"}
+
+    #     with PoolManager(headers=headers) as http:
+    #         r = http.request(
+    #             "GET",
+    #             f"{self.base_url}/multi_headers",
+    #             headers=typing.cast(HTTPHeaderDict, http.headers) | added_headers,
+    #         )
+    #         returned_headers = r.json()["headers"]
+    #         assert returned_headers[-3:] == [
+    #             ["Cookie", "choc-chip"],
+    #             ["Cookie", "oatmeal-raisin"],
+    #             ["Cookie", "tim-tam"],
+    #         ]
+    #         # make sure the pool headers weren't modified
+    #         assert http.headers == orig
+
+    # def test_headers_http_multi_header_multipart(self) -> None:
+    #     headers = HTTPHeaderDict()
+    #     headers.add("Multi", "1")
+    #     headers.add("Multi", "2")
+    #     old_headers = headers.copy()
+
+    #     with PoolManager(headers=headers) as http:
+    #         r = http.request(
+    #             "POST",
+    #             f"{self.base_url}/multi_headers",
+    #             fields={"k": "v"},
+    #             multipart_boundary="b",
+    #             encode_multipart=True,
+    #         )
+    #         returned_headers = r.json()["headers"]
+    #         assert returned_headers[5:] == [
+    #             ["Multi", "1"],
+    #             ["Multi", "2"],
+    #             ["Content-Type", "multipart/form-data; boundary=b"],
+    #         ]
+    #         # Assert that the previous headers weren't modified.
+    #         assert headers == old_headers
+
+    #         # Set a default value for the Content-Type
+    #         headers["Content-Type"] = "multipart/form-data; boundary=b; field=value"
+    #         r = http.request(
+    #             "POST",
+    #             f"{self.base_url}/multi_headers",
+    #             fields={"k": "v"},
+    #             multipart_boundary="b",
+    #             encode_multipart=True,
+    #         )
+    #         returned_headers = r.json()["headers"]
+    #         assert returned_headers[5:] == [
+    #             ["Multi", "1"],
+    #             ["Multi", "2"],
+    #             # Uses the set value, not the one that would be generated.
+    #             ["Content-Type", "multipart/form-data; boundary=b; field=value"],
+    #         ]

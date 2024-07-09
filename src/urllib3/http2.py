@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ssl
 import threading
 import types
 import typing
@@ -15,10 +16,54 @@ from urllib3.response import BaseHTTPResponse
 from ._collections import HTTPHeaderDict
 from .connection import HTTPSConnection
 from .connectionpool import HTTPSConnectionPool
+from .util import ssl_
 
 orig_HTTPSConnection = HTTPSConnection
 
 T = typing.TypeVar("T")
+
+HTTP2_SSL_OPTIONS = (
+    ssl.OP_NO_COMPRESSION
+    |
+    # ssl.OP_NO_RENEGOTIATION |
+    ssl.OP_CIPHER_SERVER_PREFERENCE
+)
+HTTP2_SSL_CIPHERS = (
+    "ECDHE+AESGCM",
+    "ECDHE+CHACHA20",
+    "DHE+AESGCM",
+    "DHE+CHACHA20",
+)
+
+
+def create_http2_ssl_context(
+    cert_reqs: int | None = None, ssl_maximum_version: int | None = None
+) -> ssl.SSLContext:
+    """
+    * Must use TLS 1.2 or higher.
+    * Must disable compression.
+    * Must disable renegotiation.
+    * Clients MUST accept DHE sizes of up to 4096 bits.
+
+    * If using TLS 1.2, must not use a Prohibited Cipher Suite.
+        https://www.rfc-editor.org/rfc/rfc9113.html#name-prohibited-tls-12-cipher-su
+
+    https://www.rfc-editor.org/rfc/rfc9113.html#section-9.2.1
+    """
+    ctx = ssl_.create_urllib3_context(
+        cert_reqs=cert_reqs,
+        options=HTTP2_SSL_OPTIONS,
+        ciphers=":".join(HTTP2_SSL_CIPHERS),
+        ssl_minimum_version=ssl.TLSVersion.TLSv1_2,
+        ssl_maximum_version=None,
+    )
+    ctx.set_alpn_protocols(["h2", "http/1.1"])
+    try:
+        ctx.set_npn_protocols(["h2", "http/1.1"])
+    except NotImplementedError:
+        pass
+    print("Created HTTP/2 default SSL context")
+    return ctx
 
 
 class _LockedObject(typing.Generic[T]):
@@ -50,16 +95,25 @@ class _LockedObject(typing.Generic[T]):
 
 class HTTP2Connection(HTTPSConnection):
     def __init__(
-        self, host: str, port: int | None = None, **kwargs: typing.Any
+        self,
+        host: str,
+        port: int | None = None,
+        ssl_context: ssl.SSLContext | None = None,
+        **kwargs: typing.Any,
     ) -> None:
         self._h2_conn = self._new_h2_conn()
         self._h2_stream: int | None = None
         self._h2_headers: list[tuple[bytes, bytes]] = []
 
+        if not ssl_context:
+            ssl_context = create_http2_ssl_context()
+        else:
+            print(ssl_context)
+
         if "proxy" in kwargs or "proxy_config" in kwargs:  # Defensive:
             raise NotImplementedError("Proxies aren't supported with HTTP/2")
 
-        super().__init__(host, port, **kwargs)
+        super().__init__(host, port, ssl_context=ssl_context, **kwargs)
 
     def _new_h2_conn(self) -> _LockedObject[h2.connection.H2Connection]:
         config = h2.config.H2Configuration(client_side=True)
